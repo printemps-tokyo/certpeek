@@ -6,6 +6,8 @@ export interface Report {
   warnings: string[];
   chain: ChainEntry[];
   source: { kind: "file" | "url"; host?: string; port?: number; authorized?: boolean; authorizationError?: string };
+  /** Result of a hostname-coverage check, when one was requested/applicable. */
+  match?: { hostname: string; matches: boolean; matchedBy?: string };
 }
 
 const C = {
@@ -56,6 +58,13 @@ export function renderText(report: Report, color: boolean): string {
   );
   if (info.san.length > 0) {
     lines.push(`  SANs:       ${info.san.join(", ")}`);
+  }
+  if (report.match) {
+    const m = report.match;
+    const verdict = m.matches
+      ? paint(`covered by ${m.matchedBy}`, C.green, color)
+      : paint("NOT covered", C.red, color);
+    lines.push(`  Match:      ${m.hostname} -> ${verdict}`);
   }
   lines.push(`  Key:        ${keyDescription(info)}`);
   lines.push(`  Serial:     ${info.serialNumber}`);

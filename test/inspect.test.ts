@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { X509Certificate } from "node:crypto";
-import { inspectCert, chainSummary } from "../src/inspect.js";
+import { inspectCert, chainSummary, parseSan } from "../src/inspect.js";
+import { matchHost } from "../src/match.js";
 import { renderText, renderJson, type Report } from "../src/render.js";
 import { certWarnings } from "../src/format.js";
 
@@ -53,6 +54,15 @@ describe("inspectCert", () => {
 describe("chainSummary", () => {
   it("marks a self-signed certificate", () => {
     expect(chainSummary([cert])[0]?.selfSigned).toBe(true);
+  });
+});
+
+describe("matchHost agrees with X509Certificate.checkHost (oracle)", () => {
+  const san = parseSan(cert.subjectAltName);
+  it.each(["certpeek.test", "www.certpeek.test", "other.test", "a.certpeek.test"])("%s", (name) => {
+    const ours = matchHost(san, name).matches;
+    const oracle = cert.checkHost(name) !== undefined;
+    expect(ours).toBe(oracle);
   });
 });
 

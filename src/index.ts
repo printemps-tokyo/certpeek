@@ -18,6 +18,9 @@ export { isPem, splitPemCerts } from "./pem.js";
 export type { CertInfo, ChainEntry } from "./inspect.js";
 export { inspectCert, chainSummary, parseSan, parseInfoAccess } from "./inspect.js";
 
+export type { HostMatch } from "./match.js";
+export { matchHost } from "./match.js";
+
 export { certsFromBuffer, readCerts } from "./read.js";
 export { fetchCertChain } from "./fetch.js";
 export type { FetchedChain } from "./fetch.js";

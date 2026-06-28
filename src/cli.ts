@@ -6,6 +6,7 @@ import { parseTarget, looksLikeUrl } from "./target.js";
 import { readCerts } from "./read.js";
 import { fetchCertChain } from "./fetch.js";
 import { inspectCert, chainSummary } from "./inspect.js";
+import { matchHost } from "./match.js";
 import { certWarnings } from "./format.js";
 import { renderJson, renderText, type Report } from "./render.js";
 
@@ -22,6 +23,7 @@ chain verifies. Offline for files; only --url/host mode uses the network.
 
 Options:
   --url <target>      Inspect the live certificate at this host/URL
+  --match <hostname>  Check whether the certificate covers this hostname (RFC 6125)
   --port <n>          Port for TLS (default: from the URL, else 443)
   --servername <name> SNI server name to send (default: the host)
   --timeout <ms>      TLS connection timeout (default: 8000)
@@ -78,17 +80,22 @@ async function buildReport(
     if (!chain.authorized) {
       warnings.unshift(`chain not verified${chain.authorizationError ? `: ${chain.authorizationError}` : ""}`);
     }
+    // Explain the result by checking the connected host (or an explicit --match).
+    const hostname = typeof values.match === "string" ? values.match : host;
     return {
       info,
       warnings,
       chain: chainSummary(chain.certs),
       source: { kind: "url", host, port: finalPort, authorized: chain.authorized, authorizationError: chain.authorizationError },
+      match: { hostname, ...matchHost(info.san, hostname) },
     };
   }
 
   const certs = await readCerts(positional);
   const info = inspectCert(certs[0]!, nowMs);
-  return { info, warnings: certWarnings(info, warnDays), chain: chainSummary(certs), source: { kind: "file" } };
+  const match =
+    typeof values.match === "string" ? { hostname: values.match, ...matchHost(info.san, values.match) } : undefined;
+  return { info, warnings: certWarnings(info, warnDays), chain: chainSummary(certs), source: { kind: "file" }, match };
 }
 
 async function main(): Promise<number> {
@@ -110,6 +117,7 @@ async function main(): Promise<number> {
       allowPositionals: true,
       options: {
         url: { type: "string" },
+        match: { type: "string" },
         port: { type: "string" },
         servername: { type: "string" },
         timeout: { type: "string" },
@@ -142,7 +150,10 @@ async function main(): Promise<number> {
   const color = !values["no-color"] && !process.env.NO_COLOR && process.stdout.isTTY === true;
   process.stdout.write(values.json ? renderJson(report) : renderText(report, color));
 
-  const invalid = report.info.status !== "valid" || (report.source.kind === "url" && report.source.authorized === false);
+  const invalid =
+    report.info.status !== "valid" ||
+    (report.source.kind === "url" && report.source.authorized === false) ||
+    report.match?.matches === false;
   return invalid ? 1 : 0;
 }
 
