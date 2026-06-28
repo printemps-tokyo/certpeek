@@ -21,6 +21,9 @@ export { inspectCert, chainSummary, chainIssues, parseSan, parseInfoAccess } fro
 export type { HostMatch } from "./match.js";
 export { matchHost } from "./match.js";
 
+export type { PinMatch } from "./pin.js";
+export { matchPin } from "./pin.js";
+
 export { certsFromBuffer, readCerts } from "./read.js";
 export { fetchCertChain } from "./fetch.js";
 export type { FetchedChain } from "./fetch.js";

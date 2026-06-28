@@ -66,6 +66,7 @@ certpeek expired.example.com --warn-days 14
 | `<host\|url>` | A host or URL to inspect live over TLS |
 | `--url <target>` | Force live TLS inspection |
 | `--match <hostname>` | Check whether the certificate covers this hostname (RFC 6125 wildcards) |
+| `--pin <fingerprint>` | Assert the leaf matches this SHA-256/SHA-1 fingerprint (with or without colons) |
 | `--port <n>` | TLS port (default: from the URL, else 443) |
 | `--servername <name>` | SNI server name to send (default: the host) |
 | `--timeout <ms>` | TLS connection timeout (default: 8000) |
@@ -83,6 +84,9 @@ does not verify — so it fits a monitoring cron.
 - Whether the certificate covers a given hostname (`--match`, with correct
   RFC 6125 wildcard rules) — shown automatically for the connected host in URL
   mode, and exiting non-zero when it does not cover the name.
+- Whether the leaf matches an expected fingerprint (`--pin sha256:AB:CD:…`,
+  colons optional) — for certificate pinning in CI / monitoring, exiting
+  non-zero on a mismatch.
 - Subject and issuer (Common Name), serial number, and SHA-256 fingerprint.
 - Validity window with a `VALID` / `EXPIRED` / `NOT YET VALID` status and, as a
   warning, how soon it expires.

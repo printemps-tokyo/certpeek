@@ -7,6 +7,7 @@ import { readCerts } from "./read.js";
 import { fetchCertChain } from "./fetch.js";
 import { inspectCert, chainSummary, chainIssues } from "./inspect.js";
 import { matchHost } from "./match.js";
+import { matchPin } from "./pin.js";
 import { certWarnings } from "./format.js";
 import { renderJson, renderText, type Report } from "./render.js";
 
@@ -24,6 +25,7 @@ chain verifies. Offline for files; only --url/host mode uses the network.
 Options:
   --url <target>      Inspect the live certificate at this host/URL
   --match <hostname>  Check whether the certificate covers this hostname (RFC 6125)
+  --pin <fingerprint> Assert the leaf matches this SHA-256/SHA-1 fingerprint
   --port <n>          Port for TLS (default: from the URL, else 443)
   --servername <name> SNI server name to send (default: the host)
   --timeout <ms>      TLS connection timeout (default: 8000)
@@ -60,6 +62,17 @@ async function buildReport(
 ): Promise<Report> {
   const warnDays = values["warn-days"] ? Number(values["warn-days"]) : 30;
 
+  const pinFor = (info: { fingerprintSha256: string; fingerprintSha1: string }): Report["pin"] => {
+    if (typeof values.pin !== "string") {
+      return undefined;
+    }
+    const result = matchPin(values.pin, info.fingerprintSha256, info.fingerprintSha1);
+    if (result.algorithm === "unknown") {
+      throw new Error("invalid --pin (expected a SHA-256 (64 hex) or SHA-1 (40 hex) fingerprint)");
+    }
+    return result;
+  };
+
   // Decide file mode vs. URL mode.
   let urlTarget: string | undefined;
   if (typeof values.url === "string") {
@@ -90,6 +103,7 @@ async function buildReport(
       chain: chainEntries,
       source: { kind: "url", host, port: finalPort, authorized: chain.authorized, authorizationError: chain.authorizationError },
       match: { hostname, ...matchHost(info.san, hostname) },
+      pin: pinFor(info),
     };
   }
 
@@ -100,7 +114,7 @@ async function buildReport(
   warnings.push(...chainIssues(chainEntries));
   const match =
     typeof values.match === "string" ? { hostname: values.match, ...matchHost(info.san, values.match) } : undefined;
-  return { info, warnings, chain: chainEntries, source: { kind: "file" }, match };
+  return { info, warnings, chain: chainEntries, source: { kind: "file" }, match, pin: pinFor(info) };
 }
 
 async function main(): Promise<number> {
@@ -123,6 +137,7 @@ async function main(): Promise<number> {
       options: {
         url: { type: "string" },
         match: { type: "string" },
+        pin: { type: "string" },
         port: { type: "string" },
         servername: { type: "string" },
         timeout: { type: "string" },
@@ -158,7 +173,8 @@ async function main(): Promise<number> {
   const invalid =
     report.info.status !== "valid" ||
     (report.source.kind === "url" && report.source.authorized === false) ||
-    report.match?.matches === false;
+    report.match?.matches === false ||
+    report.pin?.matches === false;
   return invalid ? 1 : 0;
 }
 

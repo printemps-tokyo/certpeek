@@ -8,6 +8,8 @@ export interface Report {
   source: { kind: "file" | "url"; host?: string; port?: number; authorized?: boolean; authorizationError?: string };
   /** Result of a hostname-coverage check, when one was requested/applicable. */
   match?: { hostname: string; matches: boolean; matchedBy?: string };
+  /** Result of a fingerprint pin check, when `--pin` was given. */
+  pin?: { matches: boolean; algorithm: string };
 }
 
 const C = {
@@ -69,6 +71,12 @@ export function renderText(report: Report, color: boolean): string {
   lines.push(`  Key:        ${keyDescription(info)}`);
   lines.push(`  Serial:     ${info.serialNumber}`);
   lines.push(`  SHA-256:    ${info.fingerprintSha256}`);
+  if (report.pin) {
+    const verdict = report.pin.matches
+      ? paint(`pin matches (${report.pin.algorithm})`, C.green, color)
+      : paint(`pin MISMATCH (${report.pin.algorithm})`, C.red, color);
+    lines.push(`  Pin:        ${verdict}`);
+  }
   if (info.ocsp && info.ocsp.length > 0) {
     lines.push(`  OCSP:       ${info.ocsp.join(", ")}`);
   }
