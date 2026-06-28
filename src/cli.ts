@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { parseTarget, looksLikeUrl } from "./target.js";
 import { readCerts } from "./read.js";
 import { fetchCertChain } from "./fetch.js";
-import { inspectCert, chainSummary } from "./inspect.js";
+import { inspectCert, chainSummary, chainIssues } from "./inspect.js";
 import { matchHost } from "./match.js";
 import { certWarnings } from "./format.js";
 import { renderJson, renderText, type Report } from "./render.js";
@@ -76,7 +76,9 @@ async function buildReport(
       timeoutMs: values.timeout ? Number(values.timeout) : undefined,
     });
     const info = inspectCert(chain.certs[0]!, nowMs);
+    const chainEntries = chainSummary(chain.certs, nowMs);
     const warnings = certWarnings(info, warnDays);
+    warnings.push(...chainIssues(chainEntries));
     if (!chain.authorized) {
       warnings.unshift(`chain not verified${chain.authorizationError ? `: ${chain.authorizationError}` : ""}`);
     }
@@ -85,7 +87,7 @@ async function buildReport(
     return {
       info,
       warnings,
-      chain: chainSummary(chain.certs),
+      chain: chainEntries,
       source: { kind: "url", host, port: finalPort, authorized: chain.authorized, authorizationError: chain.authorizationError },
       match: { hostname, ...matchHost(info.san, hostname) },
     };
@@ -93,9 +95,12 @@ async function buildReport(
 
   const certs = await readCerts(positional);
   const info = inspectCert(certs[0]!, nowMs);
+  const chainEntries = chainSummary(certs, nowMs);
+  const warnings = certWarnings(info, warnDays);
+  warnings.push(...chainIssues(chainEntries));
   const match =
     typeof values.match === "string" ? { hostname: values.match, ...matchHost(info.san, values.match) } : undefined;
-  return { info, warnings: certWarnings(info, warnDays), chain: chainSummary(certs), source: { kind: "file" }, match };
+  return { info, warnings, chain: chainEntries, source: { kind: "file" }, match };
 }
 
 async function main(): Promise<number> {

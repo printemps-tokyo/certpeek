@@ -90,7 +90,9 @@ does not verify — so it fits a monitoring cron.
   OCSP / CA-issuer URLs when present.
 - In URL mode: the full certificate chain and whether it verifies against the
   system trust store. Invalid certificates are still shown (the verification
-  result is reported separately).
+  result is reported separately). Each chain certificate's validity is shown,
+  and certpeek warns about a broken / out-of-order chain or an expired
+  intermediate.
 
 ## Security
 

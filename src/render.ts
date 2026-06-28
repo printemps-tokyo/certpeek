@@ -77,7 +77,8 @@ export function renderText(report: Report, color: boolean): string {
     lines.push("", paint("Chain", C.bold, color));
     chain.forEach((c, i) => {
       const root = c.selfSigned ? paint(" (self-signed root)", C.dim, color) : "";
-      lines.push(`  ${i + 1}. ${c.subjectCN}${root}`);
+      const expiry = c.status === "valid" ? "" : paint(` [${c.status.toUpperCase()}]`, C.red, color);
+      lines.push(`  ${i + 1}. ${c.subjectCN}${root}${expiry}`);
     });
   }
 

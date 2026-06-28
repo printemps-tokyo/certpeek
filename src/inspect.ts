@@ -34,11 +34,17 @@ export interface CertInfo {
   caIssuers?: string[];
 }
 
-/** A one-line summary of a certificate in a chain. */
+/** A summary of one certificate in a chain, with its validity. */
 export interface ChainEntry {
   subjectCN: string;
   issuerCN: string;
+  /** Full subject / issuer distinguished names, for linkage checks. */
+  subject: string;
+  issuer: string;
   validTo: string;
+  validToMs: number;
+  status: Status;
+  daysRemaining: number;
   selfSigned: boolean;
 }
 
@@ -116,12 +122,43 @@ export function inspectCert(cert: X509Certificate, nowMs: number): CertInfo {
   };
 }
 
-/** Summarize a certificate chain (leaf first) for display. */
-export function chainSummary(certs: X509Certificate[]): ChainEntry[] {
-  return certs.map((c) => ({
-    subjectCN: commonName(c.subject),
-    issuerCN: commonName(c.issuer),
-    validTo: c.validTo,
-    selfSigned: c.subject === c.issuer,
-  }));
+/** Summarize a certificate chain (leaf first) for display, as of `nowMs`. */
+export function chainSummary(certs: X509Certificate[], nowMs: number): ChainEntry[] {
+  return certs.map((c) => {
+    const validToMs = Date.parse(c.validTo);
+    const { status, daysRemaining } = expiryStatus(Date.parse(c.validFrom), validToMs, nowMs);
+    return {
+      subjectCN: commonName(c.subject),
+      issuerCN: commonName(c.issuer),
+      subject: c.subject,
+      issuer: c.issuer,
+      validTo: c.validTo,
+      validToMs,
+      status,
+      daysRemaining,
+      selfSigned: c.subject === c.issuer,
+    };
+  });
+}
+
+/**
+ * Problems with a chain: a broken/out-of-order link (a certificate not issued
+ * by the next one) or an expired/not-yet-valid intermediate. Pure.
+ */
+export function chainIssues(entries: ChainEntry[]): string[] {
+  const issues: string[] = [];
+  for (let i = 0; i < entries.length - 1; i++) {
+    if ((entries[i] as ChainEntry).issuer !== (entries[i + 1] as ChainEntry).subject) {
+      issues.push(`chain order looks wrong: "${(entries[i] as ChainEntry).subjectCN}" is not issued by the next certificate`);
+    }
+  }
+  for (let i = 1; i < entries.length; i++) {
+    const e = entries[i] as ChainEntry;
+    if (e.status === "expired") {
+      issues.push(`intermediate "${e.subjectCN}" is expired`);
+    } else if (e.status === "not-yet-valid") {
+      issues.push(`intermediate "${e.subjectCN}" is not yet valid`);
+    }
+  }
+  return issues;
 }

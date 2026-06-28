@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { X509Certificate } from "node:crypto";
-import { inspectCert, chainSummary, parseSan } from "../src/inspect.js";
+import { inspectCert, chainSummary, chainIssues, parseSan, type ChainEntry } from "../src/inspect.js";
 import { matchHost } from "../src/match.js";
 import { renderText, renderJson, type Report } from "../src/render.js";
 import { certWarnings } from "../src/format.js";
@@ -52,8 +52,39 @@ describe("inspectCert", () => {
 });
 
 describe("chainSummary", () => {
-  it("marks a self-signed certificate", () => {
-    expect(chainSummary([cert])[0]?.selfSigned).toBe(true);
+  it("marks a self-signed certificate and computes its status", () => {
+    const entry = chainSummary([cert], validFromMs + 86_400_000)[0];
+    expect(entry?.selfSigned).toBe(true);
+    expect(entry?.status).toBe("valid");
+  });
+});
+
+describe("chainIssues", () => {
+  const entry = (subject: string, issuer: string, status: ChainEntry["status"] = "valid"): ChainEntry => ({
+    subjectCN: subject,
+    issuerCN: issuer,
+    subject,
+    issuer,
+    validTo: "",
+    validToMs: 0,
+    status,
+    daysRemaining: 0,
+    selfSigned: subject === issuer,
+  });
+
+  it("reports nothing for a well-formed chain", () => {
+    const ok = [entry("leaf", "int"), entry("int", "root"), entry("root", "root")];
+    expect(chainIssues(ok)).toEqual([]);
+  });
+
+  it("flags a broken / out-of-order link", () => {
+    const broken = [entry("leaf", "int"), entry("other", "root")];
+    expect(chainIssues(broken)[0]).toMatch(/chain order/);
+  });
+
+  it("flags an expired intermediate (but not the leaf)", () => {
+    const chain = [entry("leaf", "int"), entry("int", "root", "expired")];
+    expect(chainIssues(chain).some((i) => /intermediate "int" is expired/.test(i))).toBe(true);
   });
 });
 
@@ -68,7 +99,7 @@ describe("matchHost agrees with X509Certificate.checkHost (oracle)", () => {
 
 describe("render", () => {
   const info = inspectCert(cert, validFromMs + 86_400_000);
-  const report: Report = { info, warnings: certWarnings(info, 30), chain: chainSummary([cert]), source: { kind: "file" } };
+  const report: Report = { info, warnings: certWarnings(info, 30), chain: chainSummary([cert], validFromMs + 86_400_000), source: { kind: "file" } };
 
   it("renders text with the key fields (no color)", () => {
     const out = renderText(report, false);
