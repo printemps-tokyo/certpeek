@@ -71,6 +71,7 @@ export function renderText(report: Report, color: boolean): string {
   lines.push(`  Key:        ${keyDescription(info)}`);
   lines.push(`  Serial:     ${info.serialNumber}`);
   lines.push(`  SHA-256:    ${info.fingerprintSha256}`);
+  lines.push(`  SPKI-256:   ${info.spkiSha256}`);
   if (report.pin) {
     const verdict = report.pin.matches
       ? paint(`pin matches (${report.pin.algorithm})`, C.green, color)

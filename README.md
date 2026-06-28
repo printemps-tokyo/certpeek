@@ -66,7 +66,7 @@ certpeek expired.example.com --warn-days 14
 | `<host\|url>` | A host or URL to inspect live over TLS |
 | `--url <target>` | Force live TLS inspection |
 | `--match <hostname>` | Check whether the certificate covers this hostname (RFC 6125 wildcards) |
-| `--pin <fingerprint>` | Assert the leaf matches this SHA-256/SHA-1 fingerprint (with or without colons) |
+| `--pin <fingerprint>` | Assert the leaf matches a SHA-256/SHA-1 cert fingerprint, or `spki:<sha256>` to pin the public key |
 | `--port <n>` | TLS port (default: from the URL, else 443) |
 | `--servername <name>` | SNI server name to send (default: the host) |
 | `--timeout <ms>` | TLS connection timeout (default: 8000) |
@@ -87,7 +87,9 @@ does not verify — so it fits a monitoring cron.
 - Whether the leaf matches an expected fingerprint (`--pin sha256:AB:CD:…`,
   colons optional) — for certificate pinning in CI / monitoring, exiting
   non-zero on a mismatch.
-- Subject and issuer (Common Name), serial number, and SHA-256 fingerprint.
+- Subject and issuer (Common Name), serial number, the certificate SHA-256
+  fingerprint, and the public-key (SPKI) SHA-256 — the latter is what you pin
+  with `spki:` so the pin survives certificate renewal with the same key.
 - Validity window with a `VALID` / `EXPIRED` / `NOT YET VALID` status and, as a
   warning, how soon it expires.
 - Subject Alternative Names, public key type and size (RSA bits / EC curve), and

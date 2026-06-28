@@ -43,6 +43,7 @@ describe("inspectCert", () => {
     expect(info.keySize).toBe(2048);
     expect(info.ca).toBe(true);
     expect(info.fingerprintSha256).toMatch(/^[0-9A-F:]+$/);
+    expect(info.spkiSha256).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/); // 32-byte colon hex
     expect(info.status).toBe("valid");
   });
 

@@ -25,7 +25,8 @@ chain verifies. Offline for files; only --url/host mode uses the network.
 Options:
   --url <target>      Inspect the live certificate at this host/URL
   --match <hostname>  Check whether the certificate covers this hostname (RFC 6125)
-  --pin <fingerprint> Assert the leaf matches this SHA-256/SHA-1 fingerprint
+  --pin <fingerprint> Assert the leaf matches this fingerprint: a SHA-256/SHA-1
+                      cert fingerprint, or spki:<sha256> to pin the public key
   --port <n>          Port for TLS (default: from the URL, else 443)
   --servername <name> SNI server name to send (default: the host)
   --timeout <ms>      TLS connection timeout (default: 8000)
@@ -62,13 +63,13 @@ async function buildReport(
 ): Promise<Report> {
   const warnDays = values["warn-days"] ? Number(values["warn-days"]) : 30;
 
-  const pinFor = (info: { fingerprintSha256: string; fingerprintSha1: string }): Report["pin"] => {
+  const pinFor = (info: { fingerprintSha256: string; fingerprintSha1: string; spkiSha256: string }): Report["pin"] => {
     if (typeof values.pin !== "string") {
       return undefined;
     }
-    const result = matchPin(values.pin, info.fingerprintSha256, info.fingerprintSha1);
+    const result = matchPin(values.pin, info.fingerprintSha256, info.fingerprintSha1, info.spkiSha256);
     if (result.algorithm === "unknown") {
-      throw new Error("invalid --pin (expected a SHA-256 (64 hex) or SHA-1 (40 hex) fingerprint)");
+      throw new Error("invalid --pin (expected a SHA-256/SHA-1 cert fingerprint, or spki:<sha256>)");
     }
     return result;
   };

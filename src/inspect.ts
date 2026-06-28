@@ -7,7 +7,7 @@
  * formatting and validity logic easy to unit test against a fixture.
  */
 
-import type { X509Certificate } from "node:crypto";
+import { createHash, type X509Certificate } from "node:crypto";
 import { expiryStatus, type Status } from "./format.js";
 
 export interface CertInfo {
@@ -28,6 +28,8 @@ export interface CertInfo {
   curve?: string;
   fingerprintSha256: string;
   fingerprintSha1: string;
+  /** SHA-256 of the public key (SubjectPublicKeyInfo) — for public-key pinning. */
+  spkiSha256: string;
   ca: boolean;
   keyUsage?: string[];
   ocsp?: string[];
@@ -97,6 +99,8 @@ export function inspectCert(cert: X509Certificate, nowMs: number): CertInfo {
 
   const key = cert.publicKey;
   const details = (key.asymmetricKeyDetails ?? {}) as { modulusLength?: number; namedCurve?: string };
+  const spkiHex = createHash("sha256").update(key.export({ type: "spki", format: "der" })).digest("hex");
+  const spkiSha256 = spkiHex.toUpperCase().replace(/(..)(?=.)/g, "$1:");
 
   return {
     subjectCN: commonName(cert.subject),
@@ -116,6 +120,7 @@ export function inspectCert(cert: X509Certificate, nowMs: number): CertInfo {
     curve: typeof details.namedCurve === "string" ? details.namedCurve : undefined,
     fingerprintSha256: cert.fingerprint256,
     fingerprintSha1: cert.fingerprint,
+    spkiSha256,
     ca: cert.ca,
     keyUsage: cert.keyUsage ?? undefined,
     ...parseInfoAccess(cert.infoAccess),

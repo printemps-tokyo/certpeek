@@ -24,4 +24,11 @@ describe("matchPin", () => {
     expect(matchPin("nothex", FP256, FP1).algorithm).toBe("unknown");
     expect(matchPin("ABCD", FP256, FP1).algorithm).toBe("unknown");
   });
+
+  it("pins the public key via a spki: prefix", () => {
+    const SPKI = "FE:C1:E3:C0:E4:39:0A:E7:A1:70:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55";
+    expect(matchPin(`spki:${SPKI}`, FP256, FP1, SPKI)).toEqual({ matches: true, algorithm: "spki" });
+    expect(matchPin(`pubkey:${SPKI}`, FP256, FP1, FP256).matches).toBe(false); // wrong spki value
+    expect(matchPin(`spki:${SPKI}`, FP256, FP1, undefined).algorithm).toBe("unknown"); // no spki available
+  });
 });
