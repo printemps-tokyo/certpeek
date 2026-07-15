@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { parseTarget, looksLikeUrl, looksLikeCertFile } from "./target.js";
 import { readCerts } from "./read.js";
 import { fetchCertChain } from "./fetch.js";
+import { parseStartTlsProto, STARTTLS_DEFAULT_PORT } from "./smtp.js";
 import { inspectCert, chainSummary, chainIssues } from "./inspect.js";
 import { matchHost } from "./match.js";
 import { matchPin } from "./pin.js";
@@ -27,7 +28,10 @@ Options:
   --match <hostname>  Check whether the certificate covers this hostname (RFC 6125)
   --pin <fingerprint> Assert the leaf matches this fingerprint: a SHA-256/SHA-1
                       cert fingerprint, or spki:<sha256> to pin the public key
-  --port <n>          Port for TLS (default: from the URL, else 443)
+  --starttls <proto>  Negotiate STARTTLS on a plain connection before the TLS
+                      handshake (supported: smtp)
+  --port <n>          Port for TLS (default: from the URL, else 443;
+                      587 with --starttls smtp)
   --servername <name> SNI server name to send (default: the host)
   --timeout <ms>      TLS connection timeout (default: 8000)
   --warn-days <n>     Warn when the certificate expires within n days (default: 30)
@@ -41,6 +45,7 @@ Examples:
   certpeek cert.pem
   certpeek example.com
   certpeek --url https://example.com:8443 --json
+  certpeek mx.example.com --starttls smtp   # mail-server cert (port 587)
   certpeek example.com --fail-days 30    # for cron: exit 1 when renewal is due
   cat fullchain.pem | certpeek
 `;
@@ -92,6 +97,8 @@ async function buildReport(
     return result;
   };
 
+  const starttls = typeof values.starttls === "string" ? parseStartTlsProto(values.starttls) : undefined;
+
   // Decide file mode vs. URL mode.
   let urlTarget: string | undefined;
   if (typeof values.url === "string") {
@@ -108,11 +115,12 @@ async function buildReport(
   }
 
   if (urlTarget !== undefined) {
-    const { host, port } = parseTarget(urlTarget);
+    const { host, port } = parseTarget(urlTarget, starttls ? STARTTLS_DEFAULT_PORT[starttls] : undefined);
     const finalPort = values.port ? Number(values.port) : port;
     const chain = await fetchCertChain(host, finalPort, {
       servername: typeof values.servername === "string" ? values.servername : undefined,
       timeoutMs: values.timeout ? Number(values.timeout) : undefined,
+      starttls,
     });
     const info = inspectCert(chain.certs[0]!, nowMs);
     const chainEntries = chainSummary(chain.certs, nowMs);
@@ -132,6 +140,10 @@ async function buildReport(
       pin: pinFor(info),
       failDays: failFor(info),
     };
+  }
+
+  if (starttls !== undefined) {
+    throw new Error("--starttls requires a live host target, not a file");
   }
 
   const certs = await readCerts(positional);
@@ -165,6 +177,7 @@ async function main(): Promise<number> {
         url: { type: "string" },
         match: { type: "string" },
         pin: { type: "string" },
+        starttls: { type: "string" },
         port: { type: "string" },
         servername: { type: "string" },
         timeout: { type: "string" },

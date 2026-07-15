@@ -57,6 +57,8 @@ cat fullchain.pem | certpeek            # ...or from stdin (shows the chain)
 certpeek example.com                    # inspect a live certificate over TLS
 certpeek --url https://example.com:8443 # explicit host:port
 certpeek github.com --json              # machine-readable
+certpeek mx.example.com --starttls smtp # mail-server cert via STARTTLS (port 587)
+certpeek mx.example.com --starttls smtp --port 25
 certpeek expired.example.com --warn-days 14
 certpeek example.com --fail-days 30     # cron gate: exit 1 when renewal is due
 ```
@@ -68,7 +70,8 @@ certpeek example.com --fail-days 30     # cron gate: exit 1 when renewal is due
 | `--url <target>` | Force live TLS inspection |
 | `--match <hostname>` | Check whether the certificate covers this hostname (RFC 6125 wildcards) |
 | `--pin <fingerprint>` | Assert the leaf matches a SHA-256/SHA-1 cert fingerprint, or `spki:<sha256>` to pin the public key |
-| `--port <n>` | TLS port (default: from the URL, else 443) |
+| `--starttls <proto>` | Negotiate STARTTLS on a plain connection before the TLS handshake (supported: `smtp`) |
+| `--port <n>` | TLS port (default: from the URL, else 443; 587 with `--starttls smtp`) |
 | `--servername <name>` | SNI server name to send (default: the host) |
 | `--timeout <ms>` | TLS connection timeout (default: 8000) |
 | `--warn-days <n>` | Warn when the certificate expires within n days (default: 30) |
@@ -107,12 +110,20 @@ days — so it fits a monitoring cron. `--warn-days` only prints a warning;
   result is reported separately). Each chain certificate's validity is shown,
   and certpeek warns about a broken / out-of-order chain or an expired
   intermediate.
+- Mail-server certificates via `--starttls smtp`: certpeek connects in plain
+  text, reads the `220` greeting, sends `EHLO`, verifies the server advertises
+  `STARTTLS` (RFC 3207), issues `STARTTLS`, and upgrades the same connection to
+  TLS before reading the chain — the dance real MTAs require on ports 25/587,
+  where a direct TLS handshake would fail. Without `--port`, `--starttls smtp`
+  defaults to 587. The flag takes a protocol name so `imap`/`pop3` can follow;
+  unsupported values fail with a clear error.
 
 ## Security
 
 certpeek inspects metadata; for files it never leaves your machine, which is the
 point — you can examine a certificate without uploading it anywhere. URL mode
-makes a single outbound TLS connection to the host you name and nothing else.
+makes a single outbound connection to the host you name and nothing else; with
+`--starttls smtp` that same one connection is upgraded to TLS in place.
 
 ## Programmatic API
 

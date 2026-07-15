@@ -5,18 +5,22 @@ export interface Target {
   port: number;
 }
 
-/** Accepts `https://host[:port][/path]`, `host:port`, or a bare `host`. */
-export function parseTarget(input: string): Target {
+/**
+ * Accepts `https://host[:port][/path]`, `host:port`, or a bare `host`.
+ * `defaultPort` is used when the target names no port (443 unless overridden,
+ * e.g. 587 for `--starttls smtp`).
+ */
+export function parseTarget(input: string, defaultPort = 443): Target {
   const s = input.trim();
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) {
     const url = new URL(s);
-    return { host: url.hostname, port: url.port ? Number(url.port) : 443 };
+    return { host: url.hostname, port: url.port ? Number(url.port) : defaultPort };
   }
   const m = /^([^/\s:]+)(?::(\d+))?$/.exec(s);
   if (!m) {
     throw new Error(`invalid target ${JSON.stringify(input)} (use host, host:port, or https://host)`);
   }
-  return { host: m[1] as string, port: m[2] ? Number(m[2]) : 443 };
+  return { host: m[1] as string, port: m[2] ? Number(m[2]) : defaultPort };
 }
 
 /** Heuristic: does this argument look like a network target rather than a file? */

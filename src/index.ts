@@ -28,5 +28,8 @@ export { certsFromBuffer, readCerts } from "./read.js";
 export { fetchCertChain } from "./fetch.js";
 export type { FetchedChain } from "./fetch.js";
 
+export type { SmtpReply, StartTlsProto } from "./smtp.js";
+export { takeSmtpReply, advertisesStartTls, parseStartTlsProto, STARTTLS_PROTOCOLS, STARTTLS_DEFAULT_PORT } from "./smtp.js";
+
 export type { Report } from "./render.js";
 export { renderText, renderJson } from "./render.js";
