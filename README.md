@@ -73,7 +73,7 @@ certpeek example.com --fail-days 30     # cron gate: exit 1 when renewal is due
 | `--starttls <proto>` | Negotiate STARTTLS on a plain connection before the TLS handshake (supported: `smtp`) |
 | `--port <n>` | TLS port (default: from the URL, else 443; 587 with `--starttls smtp`) |
 | `--servername <name>` | SNI server name to send (default: the host) |
-| `--timeout <ms>` | TLS connection timeout (default: 8000) |
+| `--timeout <ms>` | Connection timeout in ms (default: 8000); with `--starttls` it also bounds the whole plaintext negotiation |
 | `--warn-days <n>` | Warn when the certificate expires within n days (default: 30) |
 | `--fail-days <n>` | Exit non-zero when the leaf certificate expires within n days |
 | `--json` | Output JSON instead of text |

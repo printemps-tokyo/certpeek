@@ -39,6 +39,7 @@ describe("takeSmtpReply", () => {
 
   it("accepts bare LF and a code with no text", () => {
     expect(takeSmtpReply("220\n")?.reply).toEqual({ code: 220, lines: [""] });
+    expect(takeSmtpReply("250\r\n")?.reply).toEqual({ code: 250, lines: [""] });
   });
 
   it("parses error codes", () => {
@@ -48,6 +49,14 @@ describe("takeSmtpReply", () => {
 
   it("throws on a malformed line", () => {
     expect(() => takeSmtpReply("hello world\r\n")).toThrow(/malformed SMTP reply line/);
+  });
+
+  it("requires a space, hyphen, or end-of-line right after the 3-digit code", () => {
+    // Text glued to the code is not a valid reply, not code 250 with text "xyz".
+    expect(() => takeSmtpReply("250xyz\r\n")).toThrow(/malformed SMTP reply line/);
+    // A fourth digit is not a valid separator either (would loosely parse as 250 "0 hi").
+    expect(() => takeSmtpReply("2500 hi\r\n")).toThrow(/malformed SMTP reply line/);
+    expect(() => takeSmtpReply("250-ok\r\n250continuation\r\n")).toThrow(/malformed SMTP reply line/);
   });
 
   it("throws on inconsistent codes across a multi-line reply", () => {

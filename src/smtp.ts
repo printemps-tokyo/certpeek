@@ -37,7 +37,10 @@ export interface SmtpReply {
  * Returns the parsed reply and the unconsumed remainder, or `null` when the
  * buffer does not yet hold a complete reply (more data is needed). Handles
  * multi-line replies (`250-...` continuations ended by `250 ...`) and throws
- * on malformed or inconsistently-coded lines.
+ * on malformed or inconsistently-coded lines. Per RFC 5321 the 3-digit code
+ * must be followed by a space, a hyphen, or the end of the line, so lines
+ * like `250xyz` or `2500 hi` are rejected as malformed rather than being
+ * loosely parsed as code 250.
  */
 export function takeSmtpReply(input: string): { reply: SmtpReply; rest: string } | null {
   let rest = input;
@@ -50,7 +53,7 @@ export function takeSmtpReply(input: string): { reply: SmtpReply; rest: string }
     }
     const raw = rest.slice(0, nl).replace(/\r$/, "");
     rest = rest.slice(nl + 1);
-    const m = /^(\d{3})([ -]?)(.*)$/.exec(raw);
+    const m = /^(\d{3})(?:([ -])(.*))?$/.exec(raw);
     if (!m) {
       throw new Error(`malformed SMTP reply line: ${JSON.stringify(raw)}`);
     }

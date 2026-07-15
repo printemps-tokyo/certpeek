@@ -22,6 +22,15 @@ export interface FetchedChain {
   authorizationError?: string;
 }
 
+/**
+ * Caps on the plaintext SMTP negotiation. A misbehaving server that drips
+ * endless continuation lines would otherwise grow the reply buffer without
+ * bound while resetting the idle timer; these limits end the fetch with a
+ * clear error instead.
+ */
+const MAX_NEGOTIATION_BYTES = 64 * 1024;
+const MAX_NEGOTIATION_LINES = 100;
+
 /** Read the peer chain (leaf first) off a connected TLS socket and settle the promise. */
 function collectChain(
   socket: tls.TLSSocket,
@@ -46,7 +55,14 @@ function collectChain(
   resolve({ certs, authorized, authorizationError });
 }
 
-/** Connect to `host:port` and return its certificate chain (leaf first). */
+/**
+ * Connect to `host:port` and return its certificate chain (leaf first).
+ *
+ * `timeoutMs` bounds each phase of the fetch: for a direct TLS connection it
+ * is the socket idle timeout, and with `starttls` it additionally caps the
+ * total duration of the plaintext SMTP negotiation (greeting through
+ * STARTTLS accepted), not just the gaps between reads.
+ */
 export function fetchCertChain(
   host: string,
   port: number,
@@ -75,6 +91,11 @@ export function fetchCertChain(
  * Connect plain TCP, negotiate SMTP STARTTLS (220 greeting -> EHLO -> 250
  * with STARTTLS advertised -> STARTTLS -> 220), then upgrade the same socket
  * to TLS and read the certificate chain.
+ *
+ * The whole plaintext negotiation must finish within `timeoutMs` (an overall
+ * deadline, in addition to the per-read idle timeout), and the accumulated
+ * replies are capped in size and line count, so a server that drips data
+ * forever cannot keep the fetch alive or grow the buffer without bound.
  */
 function fetchViaSmtpStartTls(
   host: string,
@@ -87,16 +108,25 @@ function fetchViaSmtpStartTls(
     const done = (chain: FetchedChain) => {
       if (!settled) {
         settled = true;
+        clearTimeout(deadline);
         resolve(chain);
       }
     };
     const fail = (err: Error) => {
       if (!settled) {
         settled = true;
+        clearTimeout(deadline);
         plain.destroy();
         reject(err);
       }
     };
+
+    // Overall deadline for the plaintext dance (greeting through STARTTLS
+    // accepted). The idle timeout below only fires on silence, so a server
+    // that keeps dripping bytes would reset it forever without this.
+    const deadline = setTimeout(() => {
+      fail(new Error(`SMTP STARTTLS negotiation with ${host}:${port} timed out`));
+    }, timeoutMs);
 
     const plain = net.connect({ host, port });
     plain.setTimeout(timeoutMs, () => fail(new Error(`connection to ${host}:${port} timed out`)));
@@ -131,6 +161,7 @@ function fetchViaSmtpStartTls(
     };
 
     const upgrade = () => {
+      clearTimeout(deadline); // plaintext negotiation is done; TLS has its own timeout
       const socket = tls.connect({ socket: plain, servername, rejectUnauthorized: false }, () => {
         collectChain(socket, done, fail);
       });
@@ -142,8 +173,29 @@ function fetchViaSmtpStartTls(
     };
 
     let buffer = "";
+    let receivedBytes = 0;
+    let receivedLines = 0;
     const onData = (chunk: Buffer) => {
-      buffer += chunk.toString("utf8");
+      const text = chunk.toString("utf8");
+      receivedBytes += chunk.length;
+      receivedLines += text.split("\n").length - 1;
+      if (receivedBytes > MAX_NEGOTIATION_BYTES) {
+        fail(
+          new Error(
+            `SMTP negotiation with ${host}:${port} exceeded ${MAX_NEGOTIATION_BYTES} bytes of replies without completing`,
+          ),
+        );
+        return;
+      }
+      if (receivedLines > MAX_NEGOTIATION_LINES) {
+        fail(
+          new Error(
+            `SMTP negotiation with ${host}:${port} exceeded ${MAX_NEGOTIATION_LINES} reply lines without completing`,
+          ),
+        );
+        return;
+      }
+      buffer += text;
       try {
         for (;;) {
           const taken = takeSmtpReply(buffer);

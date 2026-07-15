@@ -91,6 +91,30 @@ function startMockSmtp(opts: MockSmtpOptions = {}): Promise<MockSmtp> {
   });
 }
 
+/** A raw TCP server for misbehaving-server tests; returns its port and a closer. */
+function startRawServer(
+  onConnection: (sock: net.Socket) => void,
+): Promise<{ port: number; close: () => Promise<void> }> {
+  const server = net.createServer((sock) => {
+    sock.on("error", () => {
+      /* ignore client resets */
+    });
+    onConnection(sock);
+  });
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as net.AddressInfo;
+      resolve({
+        port,
+        close: () =>
+          new Promise<void>((done) => {
+            server.close(() => done());
+          }),
+      });
+    });
+  });
+}
+
 describe("fetchCertChain with starttls: smtp", () => {
   let mock: MockSmtp | undefined;
   afterEach(async () => {
@@ -128,6 +152,65 @@ describe("fetchCertChain with starttls: smtp", () => {
     await expect(fetchCertChain("127.0.0.1", mock.port, { starttls: "smtp" })).rejects.toThrow(
       /STARTTLS rejected .*454/,
     );
+  });
+
+  it("enforces the overall deadline against a server that drips lines forever", async () => {
+    // Continuation lines every 50 ms reset the idle timer indefinitely; only
+    // the overall negotiation deadline can end this fetch.
+    let drip: NodeJS.Timeout | undefined;
+    let markClosed!: () => void;
+    const serverSawClose = new Promise<void>((resolve) => {
+      markClosed = resolve;
+    });
+    const raw = await startRawServer((sock) => {
+      sock.on("close", () => {
+        clearInterval(drip);
+        markClosed();
+      });
+      sock.write("220-mock.example dripping greeting\r\n");
+      drip = setInterval(() => sock.write("220-still dripping\r\n"), 50);
+    });
+    try {
+      const started = Date.now();
+      await expect(
+        fetchCertChain("127.0.0.1", raw.port, { starttls: "smtp", timeoutMs: 400 }),
+      ).rejects.toThrow(/STARTTLS negotiation .* timed out/);
+      // Settles around timeoutMs, not after some multiple of it.
+      expect(Date.now() - started).toBeLessThan(1500);
+      // The client destroyed its socket (no leak): the server observes the close.
+      await serverSawClose;
+    } finally {
+      clearInterval(drip);
+      await raw.close();
+    }
+  });
+
+  it("caps the accumulated negotiation reply size", async () => {
+    // Eight ~10 KB continuation lines (~80 KB total) never complete a reply.
+    const raw = await startRawServer((sock) => {
+      sock.write(`220-${"x".repeat(10_000)}\r\n`.repeat(8));
+    });
+    try {
+      await expect(fetchCertChain("127.0.0.1", raw.port, { starttls: "smtp" })).rejects.toThrow(
+        /exceeded 65536 bytes of replies/,
+      );
+    } finally {
+      await raw.close();
+    }
+  });
+
+  it("caps the number of negotiation reply lines", async () => {
+    // 150 short continuation lines stay far under the byte cap but blow the line cap.
+    const raw = await startRawServer((sock) => {
+      sock.write("220-flood\r\n".repeat(150));
+    });
+    try {
+      await expect(fetchCertChain("127.0.0.1", raw.port, { starttls: "smtp" })).rejects.toThrow(
+        /exceeded 100 reply lines/,
+      );
+    } finally {
+      await raw.close();
+    }
   });
 
   it("fails on an unexpected greeting", async () => {
