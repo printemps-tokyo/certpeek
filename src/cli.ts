@@ -191,6 +191,7 @@ async function main(): Promise<number> {
     positionals = parsed.positionals;
   } catch (err) {
     process.stderr.write(`error: ${(err as Error).message}\n`);
+    process.stderr.write("run 'certpeek --help' for usage.\n");
     return 1;
   }
 
