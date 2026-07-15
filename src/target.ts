@@ -23,3 +23,13 @@ export function parseTarget(input: string): Target {
 export function looksLikeUrl(input: string): boolean {
   return /^[a-z][a-z0-9+.-]*:\/\//i.test(input);
 }
+
+/**
+ * Heuristic: does this argument look like a certificate file path rather than
+ * a host? True for a path separator or a certificate-like extension, so that a
+ * typo such as `certt.pem` reports "file not found" instead of being dialed as
+ * a TLS host.
+ */
+export function looksLikeCertFile(input: string): boolean {
+  return input.includes("/") || input.includes("\\") || /\.(pem|crt|cer|der|p7b)$/i.test(input);
+}

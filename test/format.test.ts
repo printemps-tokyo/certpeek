@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { expiryStatus, humanizeDays, keyWarnings, certWarnings } from "../src/format.js";
-import { parseTarget, looksLikeUrl } from "../src/target.js";
+import { parseTarget, looksLikeUrl, looksLikeCertFile } from "../src/target.js";
 import { splitPemCerts, isPem } from "../src/pem.js";
 import { parseSan, parseInfoAccess } from "../src/inspect.js";
 
@@ -49,6 +49,27 @@ describe("parseTarget / looksLikeUrl", () => {
   it("detects url-shaped input", () => {
     expect(looksLikeUrl("https://x")).toBe(true);
     expect(looksLikeUrl("example.com")).toBe(false);
+  });
+});
+
+describe("looksLikeCertFile", () => {
+  it("treats cert-like extensions as files, case-insensitively", () => {
+    expect(looksLikeCertFile("certt.pem")).toBe(true);
+    expect(looksLikeCertFile("server.CRT")).toBe(true);
+    expect(looksLikeCertFile("leaf.cer")).toBe(true);
+    expect(looksLikeCertFile("ca.der")).toBe(true);
+    expect(looksLikeCertFile("bundle.p7b")).toBe(true);
+  });
+  it("treats anything with a path separator as a file", () => {
+    expect(looksLikeCertFile("./cert")).toBe(true);
+    expect(looksLikeCertFile("certs/leaf")).toBe(true);
+    expect(looksLikeCertFile("certs\\leaf.der")).toBe(true);
+  });
+  it("leaves host-shaped input alone", () => {
+    expect(looksLikeCertFile("example.com")).toBe(false);
+    expect(looksLikeCertFile("example.com:8443")).toBe(false);
+    expect(looksLikeCertFile("pem.example.com")).toBe(false);
+    expect(looksLikeCertFile("localhost")).toBe(false);
   });
 });
 

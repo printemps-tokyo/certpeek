@@ -11,7 +11,7 @@ export type { Status } from "./format.js";
 export { expiryStatus, humanizeDays, keyWarnings, certWarnings } from "./format.js";
 
 export type { Target } from "./target.js";
-export { parseTarget, looksLikeUrl } from "./target.js";
+export { parseTarget, looksLikeUrl, looksLikeCertFile } from "./target.js";
 
 export { isPem, splitPemCerts } from "./pem.js";
 

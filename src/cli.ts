@@ -2,7 +2,7 @@
 import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
 
-import { parseTarget, looksLikeUrl } from "./target.js";
+import { parseTarget, looksLikeUrl, looksLikeCertFile } from "./target.js";
 import { readCerts } from "./read.js";
 import { fetchCertChain } from "./fetch.js";
 import { inspectCert, chainSummary, chainIssues } from "./inspect.js";
@@ -78,8 +78,15 @@ async function buildReport(
   let urlTarget: string | undefined;
   if (typeof values.url === "string") {
     urlTarget = values.url;
-  } else if (positional && !existsSync(positional) && (looksLikeUrl(positional) || /^[A-Za-z0-9.-]+(?::\d+)?$/.test(positional))) {
-    urlTarget = positional;
+  } else if (positional && !existsSync(positional)) {
+    if (looksLikeUrl(positional)) {
+      urlTarget = positional;
+    } else if (looksLikeCertFile(positional)) {
+      // A missing cert-like filename or path is a typo, not a TLS host.
+      throw new Error(`file not found: ${positional}`);
+    } else if (/^[A-Za-z0-9.-]+(?::\d+)?$/.test(positional)) {
+      urlTarget = positional;
+    }
   }
 
   if (urlTarget !== undefined) {

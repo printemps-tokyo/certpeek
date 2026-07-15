@@ -75,7 +75,10 @@ certpeek expired.example.com --warn-days 14
 | `--no-color` | Disable ANSI colors |
 
 If the first argument is an existing file it is read as a certificate;
-otherwise a host-shaped argument is inspected over TLS. The exit code is `1`
+otherwise a host-shaped argument is inspected over TLS. An argument that looks
+like a file — a path, or a name ending in `.pem` / `.crt` / `.cer` / `.der` /
+`.p7b` — but does not exist reports "file not found" immediately instead of
+being dialed as a host (use `--url` to force a live check). The exit code is `1`
 when the certificate is expired / not yet valid, or (in URL mode) when the chain
 does not verify — so it fits a monitoring cron.
 
