@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expiryStatus, humanizeDays, keyWarnings, certWarnings } from "../src/format.js";
+import { expiryStatus, humanizeDays, keyWarnings, certWarnings, failDaysReason } from "../src/format.js";
 import { parseTarget, looksLikeUrl, looksLikeCertFile } from "../src/target.js";
 import { splitPemCerts, isPem } from "../src/pem.js";
 import { parseSan, parseInfoAccess } from "../src/inspect.js";
@@ -36,6 +36,34 @@ describe("keyWarnings / certWarnings", () => {
     const expired = certWarnings({ status: "expired", daysRemaining: -2, keyType: "ec" }, 30);
     expect(expired[0]).toMatch(/expired/);
     expect(certWarnings({ status: "valid", daysRemaining: 200, keyType: "rsa", keySize: 4096 }, 30)).toEqual([]);
+  });
+});
+
+describe("failDaysReason", () => {
+  const now = 1000 * day; // fixed clock
+
+  it("trips with an explicit reason when the leaf expires within the window", () => {
+    const info = expiryStatus(0, now + 12 * day, now);
+    expect(failDaysReason(info, 30)).toBe("expires in 12 days <= --fail-days 30");
+  });
+
+  it("includes the boundary: exactly n days remaining fails, n + 1 does not", () => {
+    expect(failDaysReason(expiryStatus(0, now + 30 * day, now), 30)).toBe("expires in 30 days <= --fail-days 30");
+    expect(failDaysReason(expiryStatus(0, now + 31 * day, now), 30)).toBeUndefined();
+  });
+
+  it("fails today's expiry even with --fail-days 0", () => {
+    const info = expiryStatus(0, now + day / 2, now);
+    expect(failDaysReason(info, 0)).toBe("expires today <= --fail-days 0");
+  });
+
+  it("is inert without --fail-days", () => {
+    expect(failDaysReason(expiryStatus(0, now + 2 * day, now), undefined)).toBeUndefined();
+  });
+
+  it("leaves non-valid certificates to the status check", () => {
+    expect(failDaysReason(expiryStatus(0, now - 2 * day, now), 30)).toBeUndefined();
+    expect(failDaysReason(expiryStatus(now + day, now + 10 * day, now), 30)).toBeUndefined();
   });
 });
 

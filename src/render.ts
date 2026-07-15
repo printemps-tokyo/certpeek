@@ -10,6 +10,8 @@ export interface Report {
   match?: { hostname: string; matches: boolean; matchedBy?: string };
   /** Result of a fingerprint pin check, when `--pin` was given. */
   pin?: { matches: boolean; algorithm: string };
+  /** Result of the expiry gate, when `--fail-days` was given. */
+  failDays?: { limit: number; failed: boolean; reason?: string };
 }
 
 const C = {
@@ -96,6 +98,10 @@ export function renderText(report: Report, color: boolean): string {
     for (const w of warnings) {
       lines.push(`  - ${paint(w, C.yellow, color)}`);
     }
+  }
+
+  if (report.failDays?.failed && report.failDays.reason) {
+    lines.push("", paint(`FAIL: ${report.failDays.reason}`, C.red, color));
   }
 
   return lines.join("\n") + "\n";

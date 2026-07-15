@@ -8,7 +8,7 @@ import { fetchCertChain } from "./fetch.js";
 import { inspectCert, chainSummary, chainIssues } from "./inspect.js";
 import { matchHost } from "./match.js";
 import { matchPin } from "./pin.js";
-import { certWarnings } from "./format.js";
+import { certWarnings, failDaysReason, type Status } from "./format.js";
 import { renderJson, renderText, type Report } from "./render.js";
 
 const HELP = `certpeek - inspect an X.509 / TLS certificate
@@ -31,6 +31,7 @@ Options:
   --servername <name> SNI server name to send (default: the host)
   --timeout <ms>      TLS connection timeout (default: 8000)
   --warn-days <n>     Warn when the certificate expires within n days (default: 30)
+  --fail-days <n>     Exit non-zero when the leaf certificate expires within n days
   --json              Output JSON instead of text
   --no-color          Disable ANSI colors
   -h, --help          Show this help
@@ -40,6 +41,7 @@ Examples:
   certpeek cert.pem
   certpeek example.com
   certpeek --url https://example.com:8443 --json
+  certpeek example.com --fail-days 30    # for cron: exit 1 when renewal is due
   cat fullchain.pem | certpeek
 `;
 
@@ -62,6 +64,22 @@ async function buildReport(
   nowMs: number,
 ): Promise<Report> {
   const warnDays = values["warn-days"] ? Number(values["warn-days"]) : 30;
+
+  let failDays: number | undefined;
+  if (typeof values["fail-days"] === "string") {
+    failDays = Number(values["fail-days"]);
+    if (!Number.isInteger(failDays) || failDays < 0) {
+      throw new Error("invalid --fail-days (expected a non-negative integer)");
+    }
+  }
+
+  const failFor = (info: { status: Status; daysRemaining: number }): Report["failDays"] => {
+    if (failDays === undefined) {
+      return undefined;
+    }
+    const reason = failDaysReason(info, failDays);
+    return { limit: failDays, failed: reason !== undefined, reason };
+  };
 
   const pinFor = (info: { fingerprintSha256: string; fingerprintSha1: string; spkiSha256: string }): Report["pin"] => {
     if (typeof values.pin !== "string") {
@@ -112,6 +130,7 @@ async function buildReport(
       source: { kind: "url", host, port: finalPort, authorized: chain.authorized, authorizationError: chain.authorizationError },
       match: { hostname, ...matchHost(info.san, hostname) },
       pin: pinFor(info),
+      failDays: failFor(info),
     };
   }
 
@@ -122,7 +141,7 @@ async function buildReport(
   warnings.push(...chainIssues(chainEntries));
   const match =
     typeof values.match === "string" ? { hostname: values.match, ...matchHost(info.san, values.match) } : undefined;
-  return { info, warnings, chain: chainEntries, source: { kind: "file" }, match, pin: pinFor(info) };
+  return { info, warnings, chain: chainEntries, source: { kind: "file" }, match, pin: pinFor(info), failDays: failFor(info) };
 }
 
 async function main(): Promise<number> {
@@ -150,6 +169,7 @@ async function main(): Promise<number> {
         servername: { type: "string" },
         timeout: { type: "string" },
         "warn-days": { type: "string" },
+        "fail-days": { type: "string" },
         json: { type: "boolean", default: false },
         "no-color": { type: "boolean", default: false },
       },
@@ -182,7 +202,8 @@ async function main(): Promise<number> {
     report.info.status !== "valid" ||
     (report.source.kind === "url" && report.source.authorized === false) ||
     report.match?.matches === false ||
-    report.pin?.matches === false;
+    report.pin?.matches === false ||
+    report.failDays?.failed === true;
   return invalid ? 1 : 0;
 }
 

@@ -58,6 +58,7 @@ certpeek example.com                    # inspect a live certificate over TLS
 certpeek --url https://example.com:8443 # explicit host:port
 certpeek github.com --json              # machine-readable
 certpeek expired.example.com --warn-days 14
+certpeek example.com --fail-days 30     # cron gate: exit 1 when renewal is due
 ```
 
 | Option | Description |
@@ -71,6 +72,7 @@ certpeek expired.example.com --warn-days 14
 | `--servername <name>` | SNI server name to send (default: the host) |
 | `--timeout <ms>` | TLS connection timeout (default: 8000) |
 | `--warn-days <n>` | Warn when the certificate expires within n days (default: 30) |
+| `--fail-days <n>` | Exit non-zero when the leaf certificate expires within n days |
 | `--json` | Output JSON instead of text |
 | `--no-color` | Disable ANSI colors |
 
@@ -79,8 +81,11 @@ otherwise a host-shaped argument is inspected over TLS. An argument that looks
 like a file — a path, or a name ending in `.pem` / `.crt` / `.cer` / `.der` /
 `.p7b` — but does not exist reports "file not found" immediately instead of
 being dialed as a host (use `--url` to force a live check). The exit code is `1`
-when the certificate is expired / not yet valid, or (in URL mode) when the chain
-does not verify — so it fits a monitoring cron.
+when the certificate is expired / not yet valid, when the chain does not verify
+(URL mode), or when `--fail-days <n>` is given and the leaf expires within `n`
+days — so it fits a monitoring cron. `--warn-days` only prints a warning;
+`--fail-days` also fails the run and states why, e.g.
+`FAIL: expires in 12 days <= --fail-days 30`.
 
 ## What it shows
 

@@ -19,6 +19,22 @@ export function humanizeDays(days: number): string {
   return days > 0 ? `in ${days} ${unit}` : `${abs} ${unit} ago`;
 }
 
+/**
+ * Reason the `--fail-days` gate trips, or undefined when it does not.
+ *
+ * Only a currently valid certificate can trip the gate: expired and
+ * not-yet-valid certificates already fail through their status.
+ */
+export function failDaysReason(
+  info: { status: Status; daysRemaining: number },
+  failDays: number | undefined,
+): string | undefined {
+  if (failDays === undefined || info.status !== "valid" || info.daysRemaining > failDays) {
+    return undefined;
+  }
+  return `expires ${humanizeDays(info.daysRemaining)} <= --fail-days ${failDays}`;
+}
+
 /** Warnings about a public key's strength. */
 export function keyWarnings(key: { type: string; size?: number }): string[] {
   if (key.type === "rsa" && key.size !== undefined && key.size < 2048) {
