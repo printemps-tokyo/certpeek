@@ -1,0 +1,32 @@
+name: Smoke
+
+# The unit tests use local fixtures and a local TLS server. This checks the
+# built CLI against a real public host, by hand or once a week.
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: A valid chain verifies and covers its own name
+        run: |
+          node dist/cli.js github.com --match github.com --json > out.json
+          jq -e '.source.authorized == true and .match.matches == true and (.chain | length) >= 2' out.json
+      - name: A name the certificate does not cover exits non-zero
+        run: |
+          if node dist/cli.js github.com --match not-covered.invalid --no-color; then
+            echo "expected a non-zero exit"; exit 1
+          fi
