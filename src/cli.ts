@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
-import { existsSync } from "node:fs";
+import { fetchIssuances, renderIssuances, summarizeIssuances } from "./ct.js";
+import { mapLimit, parseHostList, renderHostTable, sortRows, type HostRow } from "./fleet.js";
+import { existsSync, readFileSync } from "node:fs";
 
 import { parseTarget, looksLikeUrl, looksLikeCertFile } from "./target.js";
 import { readCerts } from "./read.js";
@@ -16,6 +18,10 @@ const HELP = `certpeek - inspect an X.509 / TLS certificate
 
 Usage:
   certpeek <file>            Inspect a PEM/DER certificate file (or stdin)
+  certpeek <host> <host>...  One line per host: days left, chain, name check
+  certpeek --hosts <file>    The same for the hosts listed in a file
+  certpeek --ct <domain>     Certificates logged for a domain (Certificate
+                             Transparency, through the Cert Spotter API)
   certpeek <host|url>        Inspect a live certificate over TLS
   certpeek --url <host|url>  Force live TLS inspection
 
@@ -36,6 +42,11 @@ Options:
   --timeout <ms>      TLS connection timeout (default: 8000)
   --warn-days <n>     Warn when the certificate expires within n days (default: 30)
   --fail-days <n>     Exit non-zero when the leaf certificate expires within n days
+  --hosts <file>      Check every host in <file> (one per line, # comments)
+  --ct <domain>       List certificates logged for <domain> in CT logs (sends
+                      the domain to api.certspotter.com; CERTSPOTTER_API_KEY
+                      raises the rate limit)
+  --ct-subdomains     With --ct: include subdomains
   --json              Output JSON instead of text
   --no-color          Disable ANSI colors
   -h, --help          Show this help
@@ -47,6 +58,8 @@ Examples:
   certpeek --url https://example.com:8443 --json
   certpeek mx.example.com --starttls smtp   # mail-server cert (port 587)
   certpeek example.com --fail-days 30    # for cron: exit 1 when renewal is due
+  certpeek --hosts sites.txt --fail-days 14
+  certpeek --ct example.com --ct-subdomains
   cat fullchain.pem | certpeek
 `;
 
@@ -183,6 +196,9 @@ async function main(): Promise<number> {
         timeout: { type: "string" },
         "warn-days": { type: "string" },
         "fail-days": { type: "string" },
+        hosts: { type: "string" },
+        ct: { type: "string" },
+        "ct-subdomains": { type: "boolean", default: false },
         json: { type: "boolean", default: false },
         "no-color": { type: "boolean", default: false },
       },
@@ -193,6 +209,67 @@ async function main(): Promise<number> {
     process.stderr.write(`error: ${(err as Error).message}\n`);
     process.stderr.write("run 'certpeek --help' for usage.\n");
     return 1;
+  }
+
+  const color0 = !values["no-color"] && !process.env.NO_COLOR && process.stdout.isTTY === true;
+
+  if (values.ct !== undefined) {
+    try {
+      const domain = values.ct.trim().toLowerCase().replace(/^\*\./, "");
+      const { issuances, complete } = await fetchIssuances(domain, {
+        subdomains: values["ct-subdomains"],
+        apiKey: process.env.CERTSPOTTER_API_KEY || undefined,
+      });
+      process.stdout.write(
+        values.json
+          ? JSON.stringify({ domain, complete, summary: summarizeIssuances(issuances, Date.now()), issuances }, null, 2) + "\n"
+          : renderIssuances(domain, issuances, complete, Date.now()),
+      );
+      return 0;
+    } catch (err) {
+      process.stderr.write(`error: ${(err as Error).message}\n`);
+      return 1;
+    }
+  }
+
+  if (positionals.length > 1 || values.hosts !== undefined) {
+    let targets = [...positionals];
+    if (values.hosts !== undefined) {
+      try {
+        targets.push(...parseHostList(readFileSync(values.hosts, "utf8")));
+      } catch (err) {
+        process.stderr.write(`error: cannot read ${values.hosts}: ${(err as Error).message}\n`);
+        return 1;
+      }
+    }
+    targets = [...new Set(targets)];
+    if (targets.length === 0) {
+      process.stderr.write("error: no hosts given\n");
+      return 1;
+    }
+    const warnDays = values["warn-days"] ? Number(values["warn-days"]) : 30;
+    const now = Date.now();
+    const rows: HostRow[] = await mapLimit(targets, 4, async (target) => {
+      try {
+        const r = await buildReport({ ...values, url: target }, undefined, now);
+        const failed =
+          r.info.status !== "valid" || r.source.authorized === false || r.match?.matches === false || r.failDays?.failed === true;
+        return {
+          target,
+          daysRemaining: r.info.daysRemaining,
+          validTo: new Date(r.info.validToMs).toISOString().slice(0, 10),
+          issuer: r.info.issuerCN,
+          status: r.info.status,
+          authorized: r.source.authorized,
+          matches: r.match?.matches,
+          failed,
+        };
+      } catch (err) {
+        return { target, error: (err as Error).message, failed: true };
+      }
+    });
+    process.stdout.write(values.json ? JSON.stringify({ hosts: sortRows(rows) }, null, 2) + "\n" : renderHostTable(rows, warnDays, color0));
+    return rows.some((r) => r.failed) ? 1 : 0;
   }
 
   const positional = positionals[0];

@@ -1,6 +1,6 @@
 {
   "name": "@printemps-tokyo/certpeek",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Inspect an X.509 / TLS certificate offline from a file, or live from a URL. Zero-dependency CLI.",
   "type": "module",
   "license": "MIT",

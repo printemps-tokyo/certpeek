@@ -61,6 +61,9 @@ certpeek mx.example.com --starttls smtp # mail-server cert via STARTTLS (port 58
 certpeek mx.example.com --starttls smtp --port 25
 certpeek expired.example.com --warn-days 14
 certpeek example.com --fail-days 30     # cron gate: exit 1 when renewal is due
+certpeek a.example.com b.example.com    # one line per host
+certpeek --hosts sites.txt --fail-days 14
+certpeek --ct example.com               # certificates logged for the domain (CT)
 ```
 
 | Option | Description |
@@ -76,6 +79,9 @@ certpeek example.com --fail-days 30     # cron gate: exit 1 when renewal is due
 | `--timeout <ms>` | Connection timeout in ms (default: 8000); with `--starttls` it also bounds the whole plaintext negotiation |
 | `--warn-days <n>` | Warn when the certificate expires within n days (default: 30) |
 | `--fail-days <n>` | Exit non-zero when the leaf certificate expires within n days |
+| `--hosts <file>` | Check every host in the file (one per line, `#` comments), as a table |
+| `--ct <domain>` | List certificates logged for the domain in Certificate Transparency logs |
+| `--ct-subdomains` | With `--ct`: include subdomains |
 | `--json` | Output JSON instead of text |
 | `--no-color` | Disable ANSI colors |
 
@@ -89,6 +95,25 @@ when the certificate is expired / not yet valid, when the chain does not verify
 days — so it fits a monitoring cron. `--warn-days` only prints a warning;
 `--fail-days` also fails the run and states why, e.g.
 `FAIL: expires in 12 days <= --fail-days 30`.
+
+### Several hosts
+
+With more than one host (or `--hosts sites.txt`), certpeek checks them four at
+a time and prints one line each: days left, expiry date, issuer, and `ok` or
+what failed (`EXPIRED`, `UNVERIFIED` chain, `NAME MISMATCH`, a connection
+error, or within `--fail-days`). Failing hosts come first, then the soonest
+expiries. The exit code is `1` if any host fails, so one cron line watches a
+whole set of sites; `--json` gives `{ hosts: [...] }`.
+
+### Certificate Transparency
+
+`--ct example.com` lists the certificates CAs have logged for the domain, from
+SSLMate's Cert Spotter API: how many, how many are valid now, the issuers with
+counts, and the newest ones with their names and validity (`--ct-subdomains`
+includes subdomains). It shows a certificate you did not ask for, or a CA you
+do not use. Only the domain name is sent to `api.certspotter.com`; the API
+answers without an account at a low rate, and an API key in
+`CERTSPOTTER_API_KEY` raises it.
 
 ## What it shows
 
@@ -123,7 +148,9 @@ days — so it fits a monitoring cron. `--warn-days` only prints a warning;
 certpeek inspects metadata; for files it never leaves your machine, which is the
 point — you can examine a certificate without uploading it anywhere. URL mode
 makes a single outbound connection to the host you name and nothing else; with
-`--starttls smtp` that same one connection is upgraded to TLS in place.
+`--starttls smtp` that same one connection is upgraded to TLS in place. `--ct`
+is the one feature that asks a third party: it sends the domain name to
+api.certspotter.com.
 
 ## Programmatic API
 

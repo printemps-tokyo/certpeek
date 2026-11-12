@@ -30,3 +30,7 @@ jobs:
           if node dist/cli.js github.com --match not-covered.invalid --no-color; then
             echo "expected a non-zero exit"; exit 1
           fi
+      - name: Several hosts in one table
+        run: |
+          node dist/cli.js github.com www.google.com --json > hosts.json
+          jq -e '(.hosts | length) == 2 and all(.hosts[]; .failed == false and .daysRemaining > 0)' hosts.json
